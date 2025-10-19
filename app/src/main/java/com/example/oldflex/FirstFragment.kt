@@ -11,7 +11,6 @@ import android.view.ViewGroup
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
@@ -41,9 +40,6 @@ class FirstFragment : Fragment() {
     private var offersList = mutableListOf<Offer>()
     private var isscheduled = false
     private var previousOffersCount = 0
-    private var selectedDate: Calendar = Calendar.getInstance()
-    private val dateOffersMap = mutableMapOf<String, List<Offer>>() // Cache offers by date
-
     private val removedOfferIds = mutableSetOf<String>()
     private val refreshTimeoutHandler = Handler(Looper.getMainLooper())
     private val refreshTimeoutRunnable = Runnable {
@@ -79,11 +75,9 @@ class FirstFragment : Fragment() {
         setupRefreshLayout()
         setupUpdateButton()
         setCurrentDate()
-        populateDateContainer()
-        // Initial load
-        updateSelectedDateText() // show today by default
-        refreshOffersForSelectedDate()
 
+        // Initial load
+        refreshOffers()
     }
 
     private fun initializeViews() {
@@ -115,99 +109,8 @@ class FirstFragment : Fragment() {
             android.R.color.holo_orange_light
         )
 
-        swipeRefreshLayout.setDistanceToTriggerSync(80)
-
-        swipeRefreshLayout.setProgressViewOffset(false, 0, 150)
-    }
-    private fun populateDateContainer() {
-        if (!isAdded || _binding == null) return
-
-        val dateContainer = binding.root.findViewById<LinearLayout>(R.id.date_container)
-        dateContainer.removeAllViews()
-
-        val today = Calendar.getInstance()
-        val dayFormat = SimpleDateFormat("EEE", Locale.getDefault())
-        val dateFormat = SimpleDateFormat("d", Locale.getDefault())
-
-        repeat(7) { index ->
-            val dayView = LayoutInflater.from(requireContext())
-                .inflate(R.layout.item_date, dateContainer, false)
-
-            // Clone a new calendar for each date
-            val thisDate = today.clone() as Calendar
-            thisDate.add(Calendar.DAY_OF_YEAR, index)
-
-            val dayText = dayView.findViewById<TextView>(R.id.dayText)
-            val dateText = dayView.findViewById<TextView>(R.id.dateText)
-
-            dayText.text = dayFormat.format(thisDate.time)
-            dateText.text = dateFormat.format(thisDate.time)
-
-            // Highlight today (index == 0)
-            if (index == 0) highlightSelectedDate(dayView)
-
-            // Set click listener for this specific date
-            dayView.setOnClickListener {
-                selectedDate.time = thisDate.time
-                updateSelectedDateText()
-                highlightSelectedDate(dayView)
-                refreshOffersForSelectedDate()
-            }
-
-            dateContainer.addView(dayView)
-        }
-    }
-
-    private fun highlightSelectedDate(selectedView: View) {
-        val dateContainer = binding.root.findViewById<LinearLayout>(R.id.date_container)
-
-        for (i in 0 until dateContainer.childCount) {
-            val child = dateContainer.getChildAt(i)
-            val underline = child.findViewById<View>(R.id.underline)
-            underline.visibility = View.GONE
-        }
-
-        val selectedUnderline = selectedView.findViewById<View>(R.id.underline)
-        selectedUnderline.visibility = View.VISIBLE
-    }
-
-    private fun updateSelectedDateText() {
-        val dateFormat = SimpleDateFormat("EEEE, M/d", Locale.ENGLISH)
-        binding.dateText.text = dateFormat.format(selectedDate.time)
-    }
-
-    private fun refreshOffersForSelectedDate() {
-        val dateKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(selectedDate.time)
-
-        // Try to use cached offers first
-        val cachedOffers = dateOffersMap[dateKey]
-        if (cachedOffers != null) {
-            offersList.clear()
-            offersList.addAll(cachedOffers)
-            offersAdapter.notifyDataSetChanged()
-            updateOffersCount()
-            checkEmptyState()
-            return
-        }
-
-        // Otherwise, generate new offers for that date
-        swipeRefreshLayout.isRefreshing = true
-
-        refreshJob?.cancel()
-        refreshJob = CoroutineScope(Dispatchers.Default).launch {
-            delay(200) // simulate network delay
-            val newOffers = generateNewOffers()
-            dateOffersMap[dateKey] = newOffers // cache it
-
-            withContext(Dispatchers.Main) {
-                offersList.clear()
-                offersList.addAll(newOffers)
-                offersAdapter.notifyDataSetChanged()
-                updateOffersCount()
-                swipeRefreshLayout.isRefreshing = false
-                checkEmptyState()
-            }
-        }
+        swipeRefreshLayout.setProgressViewOffset(false, 0,
+            resources.getDimensionPixelSize(R.dimen.refresh_offset))
     }
 
     private fun setupUpdateButton() {
@@ -336,6 +239,7 @@ class FirstFragment : Fragment() {
     private fun refreshOffers() {
         if (!isAdded || _binding == null) return
 
+        // Cancel any previous refresh
         refreshJob?.cancel()
 
         try {
@@ -350,7 +254,7 @@ class FirstFragment : Fragment() {
 
             refreshJob = CoroutineScope(Dispatchers.Default).launch {
                 val currentOffers = offersList.toList()
-                val randomDelay = Random.nextLong(100, 250)
+                val randomDelay = Random.nextLong(300, 601)
                 delay(randomDelay)
 
                 if (!isAdded) return@launch
@@ -364,11 +268,10 @@ class FirstFragment : Fragment() {
 
                     refreshTimeoutHandler.removeCallbacks(refreshTimeoutRunnable)
 
-                    // ✅ Update only the selected date’s cache
-                    val dateKey = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(selectedDate.time)
-                    dateOffersMap[dateKey] = newOffers
+                    if (newOffers != currentOffers) {
+                        updateOffersList(newOffers, currentOffers)
+                    }
 
-                    updateOffersList(newOffers, currentOffers)
                     updateOffersCount()
                     swipeRefreshLayout.isRefreshing = false
                     checkEmptyState()
@@ -384,7 +287,6 @@ class FirstFragment : Fragment() {
             }
         }
     }
-
 
     private fun updateOffersList(newOffers: List<Offer>, currentOffers: List<Offer>) {
         if (!isAdded || _binding == null) return
@@ -420,11 +322,15 @@ class FirstFragment : Fragment() {
         val shouldGenerateNew = (1..100).random() <= 30
         if (!shouldGenerateNew) return offersList.toList()
 
-        val newOfferCount = if (isscheduled) (1..1).random() else (1..2).random()
+        var newOfferCount = (1..2).random()
+        if(isscheduled) {
+            newOfferCount = (1..1).random()
+        }
         val newOffers = mutableListOf<Offer>()
         var attempts = 0
+        val maxAttempts = 100
 
-        while (newOffers.size < newOfferCount && attempts < 100) {
+        while (newOffers.size < newOfferCount && attempts < maxAttempts) {
             attempts++
             val offer = generateRandomOffer()
             if (!removedOfferIds.contains(offer.id)) {
