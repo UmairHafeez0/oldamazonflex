@@ -66,7 +66,13 @@ class FirstFragment : Fragment() {
                 isscheduled = true
                 val time = bundle.getString("scheduled_time", "")
                 val price = bundle.getString("scheduled_price", "")
-                showScheduledPopup(location, time, price)
+                val randomChoice = (0..1).random()
+
+                if (randomChoice == 0) {
+                    showErrorPopup()
+                } else {
+                    showScheduledPopup(location, time, price)
+                }
             }
         }
 
@@ -175,6 +181,38 @@ class FirstFragment : Fragment() {
         )
     }
 
+    private fun showErrorPopup() {
+        if (!isAdded || _binding == null) return
+
+        view?.post {
+            val popupView = LayoutInflater.from(requireContext())
+                .inflate(R.layout.layout_error_popup, binding.root as ViewGroup, false)
+
+            // Disable any clicks
+            popupView.isClickable = false
+            popupView.isFocusable = false
+
+            val toolbar = binding.root.findViewById<Toolbar>(R.id.toolbar)
+            val toolbarHeight = toolbar?.height ?: 0
+
+            (binding.root as ViewGroup).addView(popupView)
+            popupView.translationY = -popupView.height.toFloat() - toolbarHeight
+
+            popupView.animate()
+                .translationY(0f)
+                .setDuration(300)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (isAdded && _binding != null) {
+                    animatePopupDismiss(popupView)
+                }
+            }, 4000)
+        }
+    }
+
+
     private fun showScheduledPopup(location: String, time: String, price: String) {
         if (!isAdded || _binding == null) return
 
@@ -215,6 +253,8 @@ class FirstFragment : Fragment() {
             }, 5000)
         }
     }
+
+
 
     private fun animatePopupDismiss(popupView: View) {
         if (!isAdded || _binding == null) return
@@ -322,7 +362,7 @@ class FirstFragment : Fragment() {
         val shouldGenerateNew = (1..100).random() <= 30
         if (!shouldGenerateNew) return offersList.toList()
 
-        var newOfferCount = (1..2).random()
+        var newOfferCount = (5..7).random()
         if(isscheduled) {
             newOfferCount = (1..1).random()
         }
@@ -393,7 +433,8 @@ class FirstFragment : Fragment() {
             "Portland, OR (PDX6) - Amazon.com",
             "Eugene, OR (EUG5) - Amazon.com",
             "Salem, OR (PDX7) - Amazon.com",
-            "Troutdale, OR (PDX9) - Amazon.com"
+            "Troutdale, OR (PDX9) - Amazon.com",
+            "Summerville SC (VSC4/SSC4) - Sub Same-Day"
         )
 
         val location = locations.random()
