@@ -434,7 +434,8 @@ class FirstFragment : Fragment() {
             "Eugene, OR (EUG5) - Amazon.com",
             "Salem, OR (PDX7) - Amazon.com",
             "Troutdale, OR (PDX9) - Amazon.com",
-            "Summerville SC (VSC4/SSC4) - Sub Same-Day"
+            "Summerville SC (VSC4/SSC4) - Sub Same-Day",
+            "Otay Mesa CA (VCA7) - Sub Same-Day"
         )
 
         val location = locations.random()
