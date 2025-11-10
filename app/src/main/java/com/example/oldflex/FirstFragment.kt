@@ -1,5 +1,6 @@
 package com.example.oldflex
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -60,6 +61,9 @@ class FirstFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        binding.menuButton.setOnClickListener {
+            findNavController().navigate(R.id.action_FirstFragment_to_FilterFragment)
+        }
         parentFragmentManager.setFragmentResultListener("delivery_scheduled", viewLifecycleOwner) { requestKey, bundle ->
             if (isAdded && _binding != null) {
                 val location = bundle.getString("scheduled_location", "")
@@ -117,6 +121,18 @@ class FirstFragment : Fragment() {
 
         swipeRefreshLayout.setProgressViewOffset(false, 0,
             resources.getDimensionPixelSize(R.dimen.refresh_offset))
+    }
+
+    private fun getCustomBlockSettings(): Map<String, String?> {
+        val prefs = requireContext().getSharedPreferences("custom_block_prefs", Context.MODE_PRIVATE)
+        return mapOf(
+            "mode" to prefs.getString("mode", "inactive"),
+            "station_code" to prefs.getString("station_code", null),
+            "time" to prefs.getString("time", null),
+            "hours" to prefs.getString("hours", null),
+            "price" to prefs.getString("price", null),
+            "date" to prefs.getString("date", null)
+        )
     }
 
     private fun setupUpdateButton() {
@@ -299,8 +315,27 @@ class FirstFragment : Fragment() {
 
                 if (!isAdded) return@launch
 
-                val newOffers = generateNewOffers().filterNot { offer ->
-                    removedOfferIds.contains(offer.id)
+                // ✅ Check for custom block mode
+                val customSettings = getCustomBlockSettings()
+                val isCustomActive = customSettings["mode"] == "active"
+
+                val newOffers = if (isCustomActive) {
+                    // Create a single offer from the saved filter settings
+                    listOf(
+                        Offer(
+                            id = "custom_block",
+                            location = customSettings["station_code"] ?: "Custom Station",
+                            startTime = customSettings["time"] ?: "N/A",
+                            endTime = "", // Optional — you can calculate if needed
+                            duration = "${customSettings["hours"] ?: "0"} hr",
+                            price = customSettings["price"]?.let { "$$it" } ?: "$0.00"
+                        )
+                    )
+                } else {
+                    // Default random offers
+                    generateNewOffers().filterNot { offer ->
+                        removedOfferIds.contains(offer.id)
+                    }
                 }
 
                 withContext(Dispatchers.Main) {
@@ -311,6 +346,13 @@ class FirstFragment : Fragment() {
                     if (newOffers != currentOffers) {
                         updateOffersList(newOffers, currentOffers)
                     }
+
+// If custom block active, skip offer count updates and blinking
+                    if (customSettings["mode"] != "active") {
+                        updateOffersCount()
+                        blinkOffersText()
+                    }
+
 
                     updateOffersCount()
                     swipeRefreshLayout.isRefreshing = false
@@ -435,7 +477,8 @@ class FirstFragment : Fragment() {
             "Salem, OR (PDX7) - Amazon.com",
             "Troutdale, OR (PDX9) - Amazon.com",
             "Summerville SC (VSC4/SSC4) - Sub Same-Day",
-            "Otay Mesa CA (VCA7) - Sub Same-Day"
+            "Otay Mesa CA (VCA7) - Sub Same-Day",
+            "Seffner FL (VFL4) - Sub Same-Day"
         )
 
         val location = locations.random()
