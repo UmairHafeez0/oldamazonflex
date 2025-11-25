@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -77,6 +78,7 @@ class DeliveryOfferFragment : Fragment() {
             "Amazon's contribution is $price for delivering this block, this block is not eligible for in-app customer tips"
 
         view.findViewById<Button>(R.id.btnDecline).setOnClickListener {
+            Log.d("declineHere","clicked")
             requireActivity().onBackPressed()
         }
 

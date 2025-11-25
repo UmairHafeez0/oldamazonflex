@@ -15,6 +15,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -79,7 +80,12 @@ class FirstFragment : Fragment() {
                 }
             }
         }
-
+/*        viewLifecycleOwner.lifecycleScope.launch {
+            delay(15_000)   // 15 seconds
+            if (isAdded) {
+                tapTooManyError()
+            }
+        }*/
         initializeViews()
         setupRecyclerView()
         setupRefreshLayout()
@@ -229,6 +235,36 @@ class FirstFragment : Fragment() {
     }
 
 
+    private fun tapTooManyError() {
+        if (!isAdded || _binding == null) return
+
+        view?.post {
+            val popupView = LayoutInflater.from(requireContext())
+                .inflate(R.layout.layout_tap_popup, binding.root as ViewGroup, false)
+
+            // Disable any clicks
+            popupView.isClickable = false
+            popupView.isFocusable = false
+
+            val toolbar = binding.root.findViewById<Toolbar>(R.id.toolbar)
+            val toolbarHeight = toolbar?.height ?: 0
+
+            (binding.root as ViewGroup).addView(popupView)
+            popupView.translationY = -popupView.height.toFloat() - toolbarHeight
+
+            popupView.animate()
+                .translationY(0f)
+                .setDuration(300)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (isAdded && _binding != null) {
+                    animatePopupDismiss(popupView)
+                }
+            }, 4000)
+        }
+    }
     private fun showScheduledPopup(location: String, time: String, price: String) {
         if (!isAdded || _binding == null) return
 
@@ -321,16 +357,48 @@ class FirstFragment : Fragment() {
 
                 val newOffers = if (isCustomActive) {
                     // Create a single offer from the saved filter settings
+
                     listOf(
                         Offer(
                             id = "custom_block",
                             location = customSettings["station_code"] ?: "Custom Station",
                             startTime = customSettings["time"] ?: "N/A",
                             endTime = "", // Optional — you can calculate if needed
-                            duration = "${customSettings["hours"] ?: "0"} hr",
-                            price = customSettings["price"]?.let { "$$it" } ?: "$0.00"
+
+                            // Duration: add "hr" only if it contains numbers
+                            duration = customSettings["hours"]?.let { value ->
+                                val hasNumber = value.any { it.isDigit() }
+
+                                val containsUnit = value.contains("hora", ignoreCase = true) ||
+                                        value.contains("hour", ignoreCase = true) ||
+                                        value.contains("hours", ignoreCase = true) ||
+                                        value.contains("hr", ignoreCase = true)
+
+
+                                if (hasNumber && !containsUnit) "$value hr" else value
+                            } ?: "0 hr",
+                            price = customSettings["price"]?.let { priceValue ->
+                                // List of common currency symbols
+                                val currencySymbols = listOf("$", "€", "£", "¥", "₹", "AUD$", "USD$", "CAD$", "SGD$", "JPY$", "R$", "C$")
+
+                                val hasNumber = priceValue.any { it.isDigit() }
+                                val hasAlphabet = priceValue.any { it.isLetter() }
+                                val hasCurrencySymbol = currencySymbols.any { priceValue.contains(it) }
+
+                                when {
+                                    hasCurrencySymbol -> priceValue              // already contains a currency symbol
+                                    hasNumber && !hasAlphabet -> "$$priceValue" // only numbers → add $
+                                    else -> priceValue                           // contains letters or unknown format → leave as is
+                                }
+                            } ?: "$0.00"
+
+
                         )
                     )
+
+
+
+
                 } else {
                     // Default random offers
                     generateNewOffers().filterNot { offer ->
@@ -619,14 +687,26 @@ class OffersAdapter(
         val offer = offers[position]
 
         holder.tvLocation.text = offer.location
-        holder.tvTimeRange.text = "${offer.startTime} - ${offer.endTime}"
-        holder.tvDuration.text = offer.duration
+
+        // Only show dash if endTime is not empty
+        holder.tvTimeRange.text = if (offer.endTime.isNotEmpty()) {
+            "${offer.startTime} - ${offer.endTime}"
+        } else {
+            offer.startTime
+        }
+
+        // Ensure duration formatting is consistent (remove dangling "hr" if needed)
+        holder.tvDuration.text = if (offer.duration.any { it.isDigit() }) offer.duration else ""
+
+
+        // Ensure price starts with $ only if not already present
         holder.tvPrice.text = offer.price
 
         holder.itemView.setOnClickListener {
             onItemClick(offer)
         }
     }
+
 
     override fun getItemCount() = offers.size
 }
