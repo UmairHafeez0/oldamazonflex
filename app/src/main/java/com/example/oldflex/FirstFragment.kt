@@ -472,7 +472,7 @@ class FirstFragment : Fragment() {
         val shouldGenerateNew = (1..100).random() <= 30
         if (!shouldGenerateNew) return offersList.toList()
 
-        var newOfferCount = (5..7).random()
+        var newOfferCount = (1..3).random()
         if(isscheduled) {
             newOfferCount = (1..1).random()
         }
